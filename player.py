@@ -20,7 +20,16 @@ class Player:
         self.facing_right = True
         self.attack_cooldown = 0
         self.is_moving = False  # Track movement state
+        self.health_regen_timer = 0
+        self.health_regen_delay = 180  
         
+        # Teleport properties
+        self.teleport_cooldown = 0
+        self.teleport_distance = 200  # Distance to teleport
+        self.teleport_cooldown_time = 0  # Cooldown
+        self.is_teleporting = False
+        self.teleport_timer = 0
+        self.teleport_duration = 10  # Frames for teleport visual effect
         
         # Animation states
         self.current_state = "idle"
@@ -88,6 +97,23 @@ class Player:
             self.is_jumping = True
             self.set_state("jump")
     
+    def teleport(self):
+        # Teleport player in the direction theyre facing
+        if self.teleport_cooldown <= 0 and not self.is_teleporting:
+            self.is_teleporting = True
+            self.teleport_timer = self.teleport_duration
+            
+            # Calculate teleport position
+            if self.facing_right:
+                new_x = self.rect.x + self.teleport_distance
+            else:
+                new_x = self.rect.x - self.teleport_distance
+            
+            # Boundary checking
+            if new_x < 0:
+                new_x = 0
+            elif new_x + self.rect.width > 1280:  # SCREEN_WIDTH
+                new_x = 1280 - self.rect.width
             
             # Set new position
             self.rect.x = new_x
@@ -99,6 +125,15 @@ class Player:
         self.health -= amount
         self.health_regen_timer = 0  # Reset regen timer when taking damage
     
+    def regenerate_health(self):
+        # Only regenerate if not at full health and not recently damaged
+        if self.health < self.max_health and self.health_regen_timer >= self.health_regen_delay:
+            # Regenerate health every 10 frames (6 HP per second)
+            if self.health_regen_timer % 10 == 0:
+                self.health = min(self.max_health, self.health + 1)
+        
+        if self.health < self.max_health:
+            self.health_regen_timer += 1
     
     def attack(self, enemy):
         if self.attack_cooldown <= 0 and "attack" in self.states:
@@ -170,6 +205,10 @@ class Player:
                 else:
                     self.set_state("idle")
         
+        # Apply gravity
+        self.velocity_y += self.gravity
+        self.rect.y += self.velocity_y
+        
         # Ground collision
         if self.rect.bottom >= 720 - 20:  # SCREEN_HEIGHT - ground height
             self.rect.bottom = 720 - 20
@@ -218,5 +257,36 @@ class Player:
             direction_x = self.rect.centerx + (20 if self.facing_right else -20)
             pygame.draw.circle(screen, GREEN, (direction_x, self.rect.centery), 5)
         
+        # Draw health bar
+        health_width = (self.rect.width * self.health) // 100
+        health_color = GREEN if self.health > 50 else RED
+        health_bar = pygame.Rect(self.rect.x, self.rect.y - 25, health_width, 10)
+        pygame.draw.rect(screen, health_color, health_bar)
         
-      
+        # Draw health bar background
+        health_bg = pygame.Rect(self.rect.x, self.rect.y - 25, self.rect.width, 10)
+        pygame.draw.rect(screen, WHITE, health_bg, 1)
+        
+        # Draw teleport cooldown indicator (blue circle)
+        if self.teleport_cooldown > 0:
+            cooldown_x = self.rect.centerx
+            cooldown_y = self.rect.y - 55
+            # Calculate cooldown progress
+            progress = 1 - (self.teleport_cooldown / self.teleport_cooldown_time)
+            pygame.draw.circle(screen, BLUE, (cooldown_x, cooldown_y), 8)
+            pygame.draw.circle(screen, WHITE, (cooldown_x, cooldown_y), 6)
+            # Draw progress arc
+            if progress > 0:
+                pygame.draw.arc(screen, BLUE, 
+                               (cooldown_x - 6, cooldown_y - 6, 12, 12),
+                               -90, -90 + 360 * progress, 3)
+        
+        # Draw regen indicator (pulsing green circle when regenerating)
+        if (self.health_regen_timer >= self.health_regen_delay and 
+            self.health < self.max_health and 
+            not self.is_teleporting):
+            regen_x = self.rect.centerx
+            regen_y = self.rect.y - 40
+            pulse = (pygame.time.get_ticks() // 200) % 2  # Pulsing effect
+            size = 5 if pulse else 3
+            pygame.draw.circle(screen, GREEN, (regen_x, regen_y), size)
